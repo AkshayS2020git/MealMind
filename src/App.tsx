@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { demoData } from './data'
+import { demoData, type RestaurantData } from './data'
 
 const today = '2026-10-22'
 const pages = { dashboard: ['TODAY\'S PULSE', 'Good morning, Akshay'], inventory: ['OPERATIONS', 'Inventory & expiry'], menu: ['CONFIGURATION', 'Menu & recipes'], sales: ['SALES RECORDS', 'Sales & import'], waste: ['LOSS TRACKING', 'Waste log'], forecasts: ['PLANNING', 'Forecasts & ingredient planning'], assistant: ['DATA-GROUNDED ASSISTANT', 'Ask MealMind'] }
 const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
 const cloneDemo = () => JSON.parse(JSON.stringify(demoData))
 
-function useStore() {
-  const [data, setData] = useState(() => JSON.parse(localStorage.getItem('mealmind-react-data') || 'null') || cloneDemo())
-  useEffect(() => localStorage.setItem('mealmind-react-data', JSON.stringify(data)), [data])
-  return [data, setData]
+type Workspace = { id: string; restaurant: string; ownerName: string; email: string; password: string; data: RestaurantData }
+const demoEmail = import.meta.env.VITE_DEMO_EMAIL ?? ''
+const demoPassword = import.meta.env.VITE_DEMO_PASSWORD ?? ''
+const demoWorkspace: Workspace = { id: 'akshay-bistro', restaurant: "Akshay's Bistro", ownerName: 'Akshay', email: demoEmail, password: demoPassword, data: cloneDemo() }
+function useWorkspaces() {
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => JSON.parse(localStorage.getItem('mealmind-workspaces') || 'null') || (demoEmail && demoPassword ? [demoWorkspace] : []))
+  useEffect(() => localStorage.setItem('mealmind-workspaces', JSON.stringify(workspaces)), [workspaces])
+  return [workspaces, setWorkspaces] as const
 }
 function Alerts({ data }) { return data.ingredients.filter(item => item.quantity <= item.threshold || item.expiry <= '2026-10-24') }
 function Forecasts({ data }) {
@@ -19,11 +23,24 @@ function Table({ headings, children }) { return <div className="table-scroll"><t
 function Metric({ label, value, note, tone = '' }) { return <article className="metric"><span>{label}</span><strong>{value}</strong><small className={tone}>{note}</small></article> }
 
 export default function App() {
-  const [data, setData] = useStore(); const [page, setPage] = useState('dashboard'); const [notice, setNotice] = useState(''); const [showIngredient, setShowIngredient] = useState(false)
+  const [workspaces, setWorkspaces] = useWorkspaces(); const [sessionId, setSessionId] = useState(() => localStorage.getItem('mealmind-session')); const [page, setPage] = useState('dashboard'); const [notice, setNotice] = useState(''); const [showIngredient, setShowIngredient] = useState(false)
+  const workspace = workspaces.find(item => item.id === sessionId)
+  const signIn = (id: string) => { localStorage.setItem('mealmind-session', id); setSessionId(id) }
+  const signOut = () => { localStorage.removeItem('mealmind-session'); setSessionId(null); setPage('dashboard') }
+  if (!workspace) return <LoginPage workspaces={workspaces} onSignIn={signIn} onRegister={newWorkspace => { setWorkspaces(current => [...current, newWorkspace]); signIn(newWorkspace.id) }} />
+  const data = workspace.data
+  const setData = (updater: RestaurantData | ((current: RestaurantData) => RestaurantData)) => setWorkspaces(current => current.map(item => item.id === workspace.id ? { ...item, data: typeof updater === 'function' ? updater(item.data) : updater } : item))
   const alerts = Alerts({ data }); const forecasts = useMemo(() => Forecasts({ data }), [data]); const showNotice = text => { setNotice(text); setTimeout(() => setNotice(''), 2500) }
   const reset = () => { setData(cloneDemo()); showNotice('Demo workspace restored.') }
   const nav = [['dashboard', '◫', 'Overview'], ['inventory', '□', 'Inventory'], ['menu', '⌘', 'Menu & recipes'], ['sales', '↗', 'Sales'], ['waste', '♲', 'Waste log'], ['forecasts', '⌁', 'Forecasts'], ['assistant', '✦', 'Ask MealMind']]
-  return <div className="shell"><aside><a className="brand" href="#"><b>M</b><span>MealMind<small>RESTAURANT INTELLIGENCE</small></span></a><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => setPage(id)} className={page === id ? 'active' : ''}><i>{icon}</i>{label}{id === 'inventory' && <em>{alerts.length}</em>}</button>)}</nav><div className="account"><div>AS</div><span><b>Akshay's Bistro</b><small>Manager workspace</small></span><button title="Reset demo data" onClick={reset}>↻</button></div></aside><main><header><div><p className="eyebrow">{pages[page][0]}</p><h1>{pages[page][1]}</h1></div><div className="top-actions"><span>Wednesday, 22 October</span><button className="add" onClick={() => setShowIngredient(true)}>+ Add record</button></div></header>{notice && <div className="notice">{notice}</div>}<Content page={page} data={data} setData={setData} alerts={alerts} forecasts={forecasts} setPage={setPage} notify={showNotice} />{showIngredient && <IngredientModal onClose={() => setShowIngredient(false)} onSave={ingredient => { setData(d => ({ ...d, ingredients: [...d.ingredients, { ...ingredient, id: Date.now() }] })); setShowIngredient(false); showNotice('Ingredient saved.') }} />}</main></div>
+  return <div className="shell"><aside><a className="brand" href="#"><b>M</b><span>MealMind<small>RESTAURANT INTELLIGENCE</small></span></a><nav>{nav.map(([id, icon, label]) => <button key={id} onClick={() => setPage(id)} className={page === id ? 'active' : ''}><i>{icon}</i>{label}{id === 'inventory' && <em>{alerts.length}</em>}</button>)}</nav><div className="account"><div>{workspace.ownerName.slice(0, 2).toUpperCase()}</div><span><b>{workspace.restaurant}</b><small>{workspace.email}</small></span><button title="Reset demo data" onClick={reset}>↻</button><button title="Sign out" onClick={signOut}>↪</button></div></aside><main><header><div><p className="eyebrow">{pages[page][0]}</p><h1>{pages[page][1]}</h1></div><div className="top-actions"><span>{workspace.restaurant}</span><button className="add" onClick={() => setShowIngredient(true)}>+ Add record</button></div></header>{notice && <div className="notice">{notice}</div>}<Content page={page} data={data} setData={setData} alerts={alerts} forecasts={forecasts} setPage={setPage} notify={showNotice} />{showIngredient && <IngredientModal onClose={() => setShowIngredient(false)} onSave={ingredient => { setData(d => ({ ...d, ingredients: [...d.ingredients, { ...ingredient, id: Date.now() }] })); setShowIngredient(false); showNotice('Ingredient saved.') }} />}</main></div>
+}
+
+function LoginPage({ workspaces, onSignIn, onRegister }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login'); const [error, setError] = useState('')
+  const login = event => { event.preventDefault(); const form = new FormData(event.currentTarget); const workspace = workspaces.find(item => item.email.toLowerCase() === String(form.get('email')).toLowerCase() && item.password === form.get('password')); if (!workspace) return setError('We could not match that email and password.'); onSignIn(workspace.id) }
+  const register = event => { event.preventDefault(); const form = new FormData(event.currentTarget); const email = String(form.get('email')).trim().toLowerCase(); if (workspaces.some(item => item.email === email)) return setError('An account already exists for that email.'); onRegister({ id: `restaurant-${Date.now()}`, restaurant: String(form.get('restaurant')).trim(), ownerName: String(form.get('name')).trim(), email, password: String(form.get('password')), data: cloneDemo() }) }
+  return <div className="auth-shell"><section className="auth-intro"><a className="brand" href="#"><b>M</b><span>MealMind<small>RESTAURANT INTELLIGENCE</small></span></a><div><p className="eyebrow">RESTAURANT OPERATIONS, SIMPLIFIED</p><h1>Better decisions, every service.</h1><p>Track food, anticipate demand, and reduce avoidable waste from one restaurant workspace.</p></div>{demoEmail && demoPassword && <small className="auth-note">A local demo account is configured for this environment.</small>}</section><section className="auth-panel"><div className="auth-card"><div className="tabs"><button className={mode === 'login' ? 'selected' : ''} onClick={() => { setMode('login'); setError('') }}>Sign in</button><button className={mode === 'register' ? 'selected' : ''} onClick={() => { setMode('register'); setError('') }}>Register restaurant</button></div>{mode === 'login' ? <form onSubmit={login}><h2>Welcome back</h2><p>Sign in to access your restaurant workspace.</p><label>Email<input required type="email" name="email" placeholder="you@restaurant.com" /></label><label>Password<input required type="password" name="password" placeholder="Your password" /></label>{error && <p className="form-error">{error}</p>}<button className="add">Sign in</button></form> : <form onSubmit={register}><h2>Create your workspace</h2><p>Set up a dedicated local restaurant workspace in under a minute.</p><label>Restaurant name<input required name="restaurant" placeholder="e.g. Saffron Kitchen" /></label><label>Your name<input required name="name" placeholder="Owner or manager name" /></label><label>Work email<input required type="email" name="email" placeholder="you@restaurant.com" /></label><label>Create password<input required minLength={6} type="password" name="password" placeholder="At least 6 characters" /></label>{error && <p className="form-error">{error}</p>}<button className="add">Register restaurant</button></form>}<p className="local-only">This is a local MVP. Credentials are stored only in this browser and are not production-secure.</p></div></section></div>
 }
 
 function Content({ page, data, setData, alerts, forecasts, setPage, notify }) {
