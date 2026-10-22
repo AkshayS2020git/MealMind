@@ -1,6 +1,6 @@
 # MealMind React MVP
 
-This folder contains the structured React version of MealMind.
+This folder contains the structured React and TypeScript version of MealMind.
 
 ## Start the app
 

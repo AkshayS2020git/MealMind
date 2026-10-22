@@ -1,4 +1,11 @@
-export const demoData = {
+export type Ingredient = { id: number; name: string; unit: string; quantity: number; cost: number; expiry: string; threshold: number }
+export type RecipePart = [string, number, string]
+export type MenuItem = { id: number; name: string; price: number; recipe: RecipePart[] }
+export type Sale = { date: string; item: string; qty: number }
+export type WasteRecord = { date: string; item: string; qty: number; unit: string; reason: string; cost: number }
+export type RestaurantData = { ingredients: Ingredient[]; menu: MenuItem[]; sales: Sale[]; waste: WasteRecord[] }
+
+export const demoData: RestaurantData = {
   ingredients: [
     { id: 1, name: 'Tomatoes', unit: 'kg', quantity: 4.2, cost: 58, expiry: '2026-10-24', threshold: 5 },
     { id: 2, name: 'Paneer', unit: 'kg', quantity: 2.1, cost: 340, expiry: '2026-10-23', threshold: 2.5 },
