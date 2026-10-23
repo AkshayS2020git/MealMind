@@ -598,6 +598,10 @@ textarea {
   gap: 6px;
   margin-top: 8px;
 }
+.saved-account-row {
+  display: flex;
+  gap: 6px;
+}
 .account-chip {
   border: 1px solid #145b42;
   background: #fff;
@@ -612,6 +616,19 @@ textarea {
 .account-chip:hover {
   background: #145b42;
   color: #fff;
+}
+.delete-account {
+  border: 1px solid #d66a61;
+  background: #fff;
+  color: #a23d35;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.delete-account:hover {
+  background: #fff0ee;
 }
 .assistant-notes {
   margin-bottom: 16px;

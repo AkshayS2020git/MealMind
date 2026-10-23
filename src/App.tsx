@@ -28,6 +28,14 @@ const money = (value: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
 
 const cloneDemo = (): RestaurantData => JSON.parse(JSON.stringify(demoData))
+const emptyRestaurantData = (): RestaurantData => ({
+  ingredients: [],
+  menu: [],
+  sales: [],
+  waste: [],
+  customForecasts: [],
+  knowledge: []
+})
 
 const demoEmail = import.meta.env.VITE_DEMO_EMAIL || 'akshay@mealmind.com'
 const demoPassword = import.meta.env.VITE_DEMO_PASSWORD || 'demo123'
@@ -215,6 +223,24 @@ export default function App() {
     signIn(newWorkspace.id)
   }
 
+  const handleDeleteWorkspace = (id: string) => {
+    setWorkspaces(current => {
+      const next = current.filter(workspace => workspace.id !== id)
+      try {
+        localStorage.setItem('mealmind-workspaces', JSON.stringify(next))
+        const lastLogin = localStorage.getItem('mealmind-last-login')
+        const removed = current.find(workspace => workspace.id === id)
+        if (removed && lastLogin === (removed.username || removed.email)) {
+          localStorage.removeItem('mealmind-last-login')
+        }
+      } catch (e) {
+        console.error('Failed to remove local workspace:', e)
+      }
+      return next
+    })
+    if (sessionId === id) signOut()
+  }
+
   const handleUpdateData = (updater: RestaurantData | ((current: RestaurantData) => RestaurantData)) => {
     if (!workspace) return
     setWorkspaces(current => {
@@ -238,6 +264,7 @@ export default function App() {
         workspaces={workspaces}
         onSignIn={signIn}
         onRegister={handleRegister}
+        onDeleteWorkspace={handleDeleteWorkspace}
       />
     )
   }
@@ -471,11 +498,13 @@ function WorkspaceView({
 function LoginPage({
   workspaces,
   onSignIn,
-  onRegister
+  onRegister,
+  onDeleteWorkspace
 }: {
   workspaces: Workspace[]
   onSignIn: (id: string) => void
   onRegister: (workspace: Workspace) => void
+  onDeleteWorkspace: (id: string) => void
 }) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [error, setError] = useState('')
@@ -534,7 +563,7 @@ function LoginPage({
       ownerName: ownerName || username,
       email,
       password,
-      data: cloneDemo()
+      data: emptyRestaurantData()
     }
 
     onRegister(newWorkspace)
@@ -618,8 +647,8 @@ function LoginPage({
                   <b>Saved accounts on this device:</b>
                   <div className="saved-accounts-list">
                     {workspaces.map(w => (
+                      <div className="saved-account-row" key={w.id}>
                       <button
-                        key={w.id}
                         type="button"
                         className="account-chip"
                         onClick={() => {
@@ -629,6 +658,22 @@ function LoginPage({
                       >
                         @{w.username || w.email} ({w.restaurant})
                       </button>
+                      <button
+                        type="button"
+                        className="delete-account"
+                        aria-label={`Delete ${w.restaurant} from this device`}
+                        title={`Delete ${w.restaurant} from this device`}
+                        onClick={() => {
+                          if (window.confirm(`Delete ${w.restaurant} and all of its saved local data from this device? This cannot be undone.`)) {
+                            onDeleteWorkspace(w.id)
+                            setIdentifier('')
+                            setError('')
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                      </div>
                     ))}
                   </div>
                 </div>
