@@ -37,6 +37,25 @@ const emptyRestaurantData = (): RestaurantData => ({
   knowledge: []
 })
 
+const normalizeIngredientName = (name: string) => name.trim().toLocaleLowerCase()
+const findInventoryMatch = (ingredients: Ingredient[], name: string, unit: string, id?: number) =>
+  ingredients.find(item => (id ? item.id === id : normalizeIngredientName(item.name) === normalizeIngredientName(name) && item.unit === unit))
+
+const linkRecipeToInventory = (data: RestaurantData, recipe: RecipePart[]) => {
+  let nextId = Date.now()
+  const newIngredients: Ingredient[] = []
+  const linkedRecipe = recipe.map(([name, amount, unit, linkedId]) => {
+    const matched = findInventoryMatch([...data.ingredients, ...newIngredients], name, unit, linkedId)
+    if (matched) return [matched.name, amount, matched.unit, matched.id] as RecipePart
+    const ingredient: Ingredient = {
+      id: nextId++, name: name.trim(), unit, quantity: 0, cost: 0, expiry: '2099-12-31', threshold: 0
+    }
+    newIngredients.push(ingredient)
+    return [ingredient.name, amount, ingredient.unit, ingredient.id] as RecipePart
+  })
+  return { linkedRecipe, newIngredients }
+}
+
 const demoEmail = import.meta.env.VITE_DEMO_EMAIL || 'akshay@mealmind.com'
 const demoPassword = import.meta.env.VITE_DEMO_PASSWORD || 'demo123'
 
@@ -291,6 +310,7 @@ function WorkspaceView({
   const [page, setPage] = useState('dashboard')
   const [notice, setNotice] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null)
 
   const data = workspace.data
   const alerts = useMemo(() => getAlerts(data), [data])
@@ -381,12 +401,12 @@ function WorkspaceView({
             ingredients={data.ingredients}
             onClose={() => setShowAddModal(false)}
             onSave={menuItem => {
-              onUpdateData(d => ({
-                ...d,
-                menu: [...d.menu, { ...menuItem, id: Date.now() }]
-              }))
+              onUpdateData(d => {
+                const { linkedRecipe, newIngredients } = linkRecipeToInventory(d, menuItem.recipe)
+                return { ...d, ingredients: [...d.ingredients, ...newIngredients], menu: [...d.menu, { ...menuItem, recipe: linkedRecipe, id: Date.now() }] }
+              })
               setShowAddModal(false)
-              showNotice('Menu item added.')
+              showNotice('Menu item and recipe saved.')
             }}
           />
         )
@@ -422,6 +442,23 @@ function WorkspaceView({
       default:
         return null
     }
+  }
+
+  const renderEditMenuModal = () => {
+    if (!editingMenuItem) return null
+    return <MenuModal
+      ingredients={data.ingredients}
+      initialItem={editingMenuItem}
+      onClose={() => setEditingMenuItem(null)}
+      onSave={menuItem => {
+        onUpdateData(d => {
+          const { linkedRecipe, newIngredients } = linkRecipeToInventory(d, menuItem.recipe)
+          return { ...d, ingredients: [...d.ingredients, ...newIngredients], menu: d.menu.map(item => item.id === editingMenuItem.id ? { ...item, ...menuItem, recipe: linkedRecipe } : item) }
+        })
+        setEditingMenuItem(null)
+        showNotice('Recipe updated. Physical stock was not changed.')
+      }}
+    />
   }
 
   return (
@@ -479,7 +516,7 @@ function WorkspaceView({
 
         {notice && <div className="notice">{notice}</div>}
 
-        <Content
+          <Content
           page={page}
           data={data}
           setData={onUpdateData}
@@ -487,9 +524,11 @@ function WorkspaceView({
           forecasts={forecasts}
           setPage={setPage}
           notify={showNotice}
+            onEditMenuItem={setEditingMenuItem}
         />
 
         {renderAddModal()}
+        {renderEditMenuModal()}
       </main>
     </div>
   )
@@ -736,7 +775,8 @@ function Content({
   alerts,
   forecasts,
   setPage,
-  notify
+  notify,
+  onEditMenuItem
 }: {
   page: string
   data: RestaurantData
@@ -745,10 +785,11 @@ function Content({
   forecasts: any[]
   setPage: (p: string) => void
   notify: (text: string) => void
+  onEditMenuItem: (item: MenuItem) => void
 }) {
   if (page === 'dashboard') return <Dashboard data={data} alerts={alerts} forecasts={forecasts} setPage={setPage} />
   if (page === 'inventory') return <Inventory data={data} setData={setData} notify={notify} />
-  if (page === 'menu') return <Menu data={data} setData={setData} notify={notify} />
+  if (page === 'menu') return <Menu data={data} setData={setData} notify={notify} onEdit={onEditMenuItem} />
   if (page === 'sales') return <Sales data={data} setData={setData} notify={notify} />
   if (page === 'waste') return <Waste data={data} setData={setData} notify={notify} />
   if (page === 'forecasts') return <ForecastPage forecasts={forecasts} setData={setData} notify={notify} />
@@ -940,12 +981,15 @@ function Inventory({
 function Menu({
   data,
   setData,
-  notify
+  notify,
+  onEdit
 }: {
   data: RestaurantData
   setData: (updater: (current: RestaurantData) => RestaurantData) => void
   notify: (text: string) => void
+  onEdit: (item: MenuItem) => void
 }) {
+  const [servings, setServings] = useState(1)
   const removeMenuItem = (id: number) => {
     setData(d => ({ ...d, menu: d.menu.filter(m => m.id !== id) }))
     notify('Menu item removed.')
@@ -953,32 +997,38 @@ function Menu({
 
   return (
     <>
-      <p className="intro">Recipes determine the ingredient requirement for every forecasted serving.</p>
+      <div className="menu-planning-bar"><p className="intro">Recipes determine the ingredient requirement for every forecasted serving.</p><label>Plan servings<input type="number" min="1" value={servings} onChange={event => setServings(Math.max(1, Number(event.target.value) || 1))} /></label></div>
       <div className="recipe-grid">
         {data.menu.map(item => (
           <article className="recipe" key={item.id}>
             <div className="recipe-header">
               <h2>{item.name}</h2>
-              <button
-                className="text-button danger"
-                onClick={() => removeMenuItem(item.id)}
-                title="Remove dish"
-              >
-                ✕
-              </button>
+              <div className="recipe-actions">
+                <button className="text-button" onClick={() => onEdit(item)}>Edit recipe</button>
+                <button className="text-button danger" onClick={() => removeMenuItem(item.id)} title="Remove dish">✕</button>
+              </div>
             </div>
             <p>{money(item.price)} · Active</p>
             <ul>
               {item.recipe.length ? (
-                item.recipe.map(([name, amount, unit]) => (
-                  <li key={name}>
-                    {amount} {unit} {name} per serving
+                item.recipe.map(([name, amount, unit, ingredientId]) => (
+                  <li key={`${name}-${ingredientId ?? unit}`}>
+                    {amount} {unit} {name} per serving {ingredientId ? <small className="linked-label">Linked to inventory</small> : <small className="linked-label warning">Needs inventory link</small>}
                   </li>
                 ))
               ) : (
                 <li>No ingredients mapped yet.</li>
               )}
             </ul>
+            {item.recipe.length > 0 && <div className="availability-list">
+              <b>For {servings} serving{servings === 1 ? '' : 's'}</b>
+              {item.recipe.map(([name, amount, unit, ingredientId]) => {
+                const inventory = findInventoryMatch(data.ingredients, name, unit, ingredientId)
+                const required = amount * servings
+                const sufficient = inventory && inventory.quantity >= required
+                return <span key={`availability-${name}-${ingredientId ?? unit}`} className={sufficient ? 'available' : 'insufficient'}>{name}: {required} {unit} required · {inventory ? `${inventory.quantity} ${inventory.unit} available` : 'not in inventory'} {sufficient ? '✓' : '⚠'}</span>
+              })}
+            </div>}
           </article>
         ))}
       </div>
@@ -1816,14 +1866,18 @@ function SalesModal({
 function MenuModal({
   ingredients,
   onClose,
-  onSave
+  onSave,
+  initialItem
 }: {
   ingredients: Ingredient[]
   onClose: () => void
   onSave: (record: Omit<MenuItem, 'id'>) => void
+  initialItem?: MenuItem
 }) {
   const [recipeParts, setRecipeParts] = useState<Array<{ name: string; amount: number; unit: string }>>([
-    { name: ingredients[0]?.name || 'Tomatoes', amount: 0.15, unit: ingredients[0]?.unit || 'kg' }
+    ...(initialItem?.recipe.map(([name, amount, unit]) => ({ name, amount, unit })) || [
+      { name: ingredients[0]?.name || '', amount: 0.15, unit: ingredients[0]?.unit || 'kg' }
+    ])
   ])
 
   const addRow = () => {
@@ -1870,17 +1924,17 @@ function MenuModal({
   return (
     <div className="overlay">
       <form className="modal" onSubmit={submit}>
-        <h2>Add Menu Item & Recipe</h2>
-        <p className="modal-subtitle">Define a dish and its ingredient requirements per serving.</p>
+        <h2>{initialItem ? 'Edit Recipe' : 'Add Menu Item & Recipe'}</h2>
+        <p className="modal-subtitle">Review ingredient links before saving. Creating or editing a recipe never changes physical stock.</p>
 
         <label>
           DISH / ITEM NAME
-          <input required name="name" placeholder="e.g. Shahi Paneer Bowl" />
+          <input required name="name" defaultValue={initialItem?.name} placeholder="e.g. Shahi Paneer Bowl" />
         </label>
 
         <label>
           PRICE (INR)
-          <input required type="number" step="1" min="0" name="price" placeholder="e.g. 320" />
+          <input required type="number" step="1" min="0" name="price" defaultValue={initialItem?.price} placeholder="e.g. 320" />
         </label>
 
         <label>
@@ -1939,6 +1993,14 @@ function MenuModal({
             </button>
           </div>
         </label>
+
+        <div className="recipe-review" aria-live="polite">
+          <b>Inventory link review</b>
+          {recipeParts.map((part, index) => {
+            const match = findInventoryMatch(ingredients, part.name, part.unit)
+            return <span key={`${part.name}-${index}`}>{part.name || 'Unnamed ingredient'}: {match ? `uses ${match.name} (${match.quantity} ${match.unit} on hand)` : 'new inventory item will be created with 0 stock'}</span>
+          })}
+        </div>
 
         <div className="modal-actions">
           <button type="button" onClick={onClose}>

@@ -8,7 +8,9 @@ export type Ingredient = {
   threshold: number
 }
 
-export type RecipePart = [string, number, string]
+// The optional fourth value is the linked inventory ingredient ID. Older saved
+// recipes without it remain supported and are matched by name and unit.
+export type RecipePart = [string, number, string, number?]
 
 export type MenuItem = {
   id: number

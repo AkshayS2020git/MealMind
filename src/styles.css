@@ -362,6 +362,19 @@ td {
 .recipe h2 {
   font-size: 16px;
 }
+.recipe-actions { display: flex; align-items: center; gap: 8px; }
+.linked-label { display: inline-block; margin-left: 6px; font-size: 10px; color: #4f875a; }
+.linked-label.warning { color: #af6629; }
+.menu-planning-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 18px; }
+.menu-planning-bar .intro { margin: 0; }
+.menu-planning-bar label { width: 130px; font-size: 11px; }
+.menu-planning-bar input { margin-top: 3px; padding: 7px 8px; }
+.availability-list { display: grid; gap: 5px; border-top: 1px solid #e7ece8; margin-top: 14px; padding-top: 12px; font-size: 11px; }
+.availability-list span { display: block; border-radius: 5px; padding: 5px 7px; }
+.availability-list .available { background: #edf7ef; color: #397348; }
+.availability-list .insufficient { background: #fff1e5; color: #9d5a26; }
+.recipe-review { display: grid; gap: 5px; border: 1px solid #d9e8dd; border-radius: 8px; padding: 11px; background: #f5faf6; color: #496558; font-size: 11px; }
+.recipe-review b { color: #173f31; font-size: 12px; }
 .recipe ul {
   padding-left: 17px;
   color: #708078;
